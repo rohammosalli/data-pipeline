@@ -39,50 +39,62 @@ def read_csv_file(bucket, key):
     return rows
 
 def process_customers(customers, customer_orders, order_items):
-    # Organize orders by customer_reference
-    orders_by_customer = defaultdict(list)
-    for order in customer_orders:
-        customer_reference = order["customer_reference"]
-        orders_by_customer[customer_reference].append(order)
+    try:
+        # Organize orders by customer_reference
+        orders_by_customer = defaultdict(list)
+        for order in customer_orders:
+            customer_reference = order["customer_reference"]
+            orders_by_customer[customer_reference].append(order)
 
-    # Organize items by order_reference
-    items_by_order = defaultdict(list)
-    for item in order_items:
-        order_reference = item["order_reference"]
-        items_by_order[order_reference].append(item)
+        # Organize items by order_reference
+        items_by_order = defaultdict(list)
+        for item in order_items:
+            order_reference = item["order_reference"]
+            items_by_order[order_reference].append(item)
 
-    # Process customers, orders, and items
-    for customer in customers:
-        customer_reference = customer["customer_reference"]
-        total_amount_spent = 0.0
-        customer_orders_output = []
 
-        for order in orders_by_customer[customer_reference]:
-            order_reference = order["order_reference"]
-            order_items_output = []
+        # Process customers, orders, and items
+        for customer in customers:
+            customer_reference = customer["customer_reference"]
+            total_amount_spent = 0.0
+            customer_orders_output = []
 
-            for item in items_by_order[order_reference]:
-                item_total = float(item["total_price"])
-                total_amount_spent += item_total
+            for order in orders_by_customer[customer_reference]:
+                order_reference = order["order_reference"]
+                order_items_output = []
 
-                order_items_output.append({
-                    "product": item["item_name"],
-                    "price": item_total / int(item["quantity"]),
-                    "quantity": int(item["quantity"]),
-                    "total": item_total
+                for item in items_by_order[order_reference]:
+                    item_total = float(item["total_price"])
+                    total_amount_spent += item_total
+
+                    order_items_output.append({
+                        "product": item["item_name"],
+                        "price": item_total / int(item["quantity"]),
+                        "quantity": int(item["quantity"]),
+                        "total": item_total
+                    })
+
+                customer_orders_output.append({
+                    "order_id": order_reference,
+                    "items": order_items_output
                 })
 
-            customer_orders_output.append({
-                "order_id": order_reference,
-                "items": order_items_output
-            })
-
-        customer_message = {
-            "type": "customer_message",
+            customer_message = {
+                "type": "customer_message",
+                "customer_reference": customer_reference,
+                "number_of_orders": len(customer_orders_output),
+                "total_amount_spent": total_amount_spent
+            }
+            sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(customer_message))
+            datatolog=json.dumps(customer_message)
+            print(datatolog)
+    except Exception as e:
+        error_message = {
+            "type": "error_message",
             "customer_reference": customer_reference,
-            "number_of_orders": len(customer_orders_output),
-            "total_amount_spent": total_amount_spent
+            "order_reference": order_reference,
+            "message": str(e)
         }
-        sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(customer_message))
-        datatolog=json.dumps(customer_message)
+        sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(error_message))
+        datatolog=json.dumps(error_message)
         print(datatolog)
